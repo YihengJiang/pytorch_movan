@@ -27,7 +27,7 @@ STD_DIR = "/home/jiangyiheng/data/TIMIT/feature/tmp/std"
 EPOCH = 10
 LearningRate = 1e-3
 htk = ut.HTKFile()
-batchSize = 32
+batchSize = 64
 
 
 def meanValue(data_path):
@@ -59,10 +59,6 @@ def stdValue(data_path, meanValue):
 
 
 class dataGet(tud.Dataset):
-    def init(self,l):
-            global lock
-            lock = l
-
     @ut.timing(None)
     def __init__(self, root, mean, std, maxR=0):
         self.mean = mean
@@ -75,39 +71,28 @@ class dataGet(tud.Dataset):
         self.maxR = 0
         self.count = 0
         self.root=root
-        # for i, fname in enumerate(files):
+        p = re.compile("_")
+        for i, fname in enumerate(files):
         #     getFileData(fname)
+            regexRslt = re.split(p, fname)
+            if regexRslt[2][:2] == "SA":
+                continue
+            ffpath = self.root + fname
+            # tmp=htk(ffpath).data
+            df = pd.read_csv(ffpath, sep=' ', dtype=float)
+            tmp = df.dropna(axis=1, how='all').as_matrix()
+            row = np.size(tmp, axis=0)
 
-        lock = mp.Lock()
-        # change lock to global variable when init the pool
-        pool = mp.Pool(16, initializer=self.init, initargs=(lock,))
-        pool.map(self.getFileData, files)
-        pool.close()
-        pool.join()
+            self.count+=1
+            self.train_labels.append([np.floor(self.count / 8.1), regexRslt[1]])
+            self.train_data.append(tmp)
+            if row > self.maxR:
+                self.maxR = row
+
 
         if maxR:
             self.maxR = maxR
 
-
-    # declare global lock,it will be use in pool
-    def getFileData(self,fname):
-        p = re.compile("_")
-        regexRslt = re.split(p, fname)
-        if regexRslt[2][:2] == "SA":
-            return
-        ffpath = self.root + fname
-        # tmp=htk(ffpath).data
-        df = pd.read_csv(ffpath, sep=' ', dtype=float)
-        tmp = df.dropna(axis=1, how='all').as_matrix()
-        row = np.size(tmp, axis=0)
-        lock.acquire() # add lock to source as follow:
-        self.count += 1
-        print(str(self.count),"\n")
-        self.train_labels.append([np.floor(self.count / 8.1), regexRslt[1]])
-        self.train_data.append(tmp)
-        if row > self.maxR:
-            self.maxR = row
-        lock.release() # release the lock
 
 
     def __getitem__(self, index):
@@ -194,7 +179,7 @@ for i in np.arange(test_set.__len__()):
 test_x = tc.from_numpy(np.concatenate(test_x)[:, np.newaxis, :, :])[:batchSize]
 test_x = var(test_x).cuda()
 test_y = tc.from_numpy(np.array([i[0] for i in test_y]))[:batchSize].type(tc.LongTensor).cuda()
-cnn = cnn(train_set.maxR, train_set.count / 8)
+cnn = cnn(train_set.maxR, train_set.count / 8).cuda()
 cnn.apply(weights_init)  # apply函数会递归地搜索网络内的所有module并把参数表示的函数应用到所有的module上。
 lossFunc = nn.CrossEntropyLoss().cuda()
 optimizer = tc.optim.Adam(cnn.parameters(), lr=LearningRate)
