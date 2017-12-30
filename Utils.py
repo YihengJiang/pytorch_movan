@@ -2,10 +2,11 @@
 # -*- coding:utf-8 -*-
 import functools
 import time
-
+from multiprocessing import Pool, Manager
 import struct
-import numpy
+import numpy as np
 import os
+import pandas as pd
 
 EX1 = "use decorator @log that you should append a string parameter in your return tuple so we can write it to log file\n"
 
@@ -126,7 +127,7 @@ class HTKFile:
                     for v in range(self.nFeatures):
                         val = struct.unpack_from(">h", s, v * 2)[0] / 32767.0
                         frame.append(val)
-                    self.data.append(numpy.array(frame))
+                    self.data.append(np.array(frame))
             elif "C" in self.qualifiers:
 
                 A = []
@@ -143,7 +144,7 @@ class HTKFile:
                     frame = []
                     for v in range(self.nFeatures):
                         frame.append((struct.unpack_from(">h", s, v * 2)[0] + B[v]) / A[v])
-                    self.data.append(numpy.array(frame))
+                    self.data.append(np.array(frame))
             else:
                 for x in range(self.nSamples):
                     s = f.read(sampSize)
@@ -151,8 +152,8 @@ class HTKFile:
                     for v in range(self.nFeatures):
                         val = struct.unpack_from(">f", s, v * 4)
                         frame.append(val[0])
-                    self.data.append(numpy.array(frame))
-            self.data = numpy.array(self.data)
+                    self.data.append(np.array(frame))
+            self.data = np.array(self.data)
 
             if "K" in self.qualifiers:
                 print("CRC checking not implememnted...")
@@ -265,3 +266,41 @@ class Log(object):
         filePath1 = createDir(self.filePath)
         with open(filePath1, "a") as fileW:
             fileW.writelines(str(self.logStr))
+
+
+def proc(fname):
+    # tmp=htk(ffpath).data is used to read htk file ,if use it ,then you should comment the next 2 code
+    # tmp=htk(ffpath).data
+    df = pd.read_csv(fname, sep=' ', dtype=float)
+    tmp = df.dropna(axis=1, how='all').as_matrix()
+    size = np.shape(tmp)
+    with lock:
+        data_x.append(tmp)
+        dataSize.append(size)
+
+
+
+def multiReadProc(files):
+    manager = Manager()
+    data_x = manager.list()
+    dataSize = manager.list()
+    lock = manager.Lock()
+
+    pool = Pool(initializer=globalVarinit,initargs=(lock,data_x,dataSize)) # default number of processes is os.cpu_count()
+    pool.map(proc, files)
+    pool.close()
+    pool.join()
+    tmp1=data_x
+    tmp2=dataSize
+
+    return tmp1, tmp2
+
+def globalVarinit(_lock,_data,_dataSize):
+    global data_x
+    global dataSize
+    global lock
+    data_x=_data
+    lock=_lock
+    dataSize=_dataSize
+
+
