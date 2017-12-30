@@ -14,7 +14,7 @@ import re  # regex module
 import Utils as ut
 import multiprocessing as mp
 
-logSplit="==========================================================================="
+logSplit = "==========================================================================="
 with ut.Log('./log.txt', logSplit) as t:
     pass
 
@@ -65,35 +65,18 @@ class dataGet(tud.Dataset):
         self.std = std
         files = os.listdir(root)
         files.sort()
-        self.train_data = []
-        self.train_labels = []
-        self.minR = 1000
-        self.maxR = 0
-        self.count = 0
-        self.root=root
         p = re.compile("_")
-        for i, fname in enumerate(files):
-        #     getFileData(fname)
-            regexRslt = re.split(p, fname)
-            if regexRslt[2][:2] == "SA":
-                continue
-            ffpath = self.root + fname
-            # tmp=htk(ffpath).data
-            df = pd.read_csv(ffpath, sep=' ', dtype=float)
-            tmp = df.dropna(axis=1, how='all').as_matrix()
-            row = np.size(tmp, axis=0)
+        files1=[root+i for i in files if re.split(p, i)[2][:2]!="SA"]
 
-            self.count+=1
-            self.train_labels.append([np.floor(self.count / 8.1), regexRslt[1]])
-            self.train_data.append(tmp)
-            if row > self.maxR:
-                self.maxR = row
-
-
+        self.train_data, dataSize = ut.multiReadProc(files1)
+        self.count = len(self.train_data)
+        self.maxR = max([i[0] for i in dataSize])
+        labels=[re.split(p, i)[1] for i in files if re.split(p, i)[2][:2] != "SA"]
+        self.train_labels=[]
+        for i,j in enumerate(labels):
+            self.train_labels.append([np.floor((i + 1) / 8.1), j])
         if maxR:
             self.maxR = maxR
-
-
 
     def __getitem__(self, index):
         data = self.train_data[index]
@@ -111,6 +94,7 @@ class dataGet(tud.Dataset):
 
     def __len__(self):
         return self.count
+
 
 if not os.path.exists(MEAN_DIR) or not os.path.exists(STD_DIR):
     meanV = meanValue(TRAIN_DIR)
@@ -184,7 +168,6 @@ cnn.apply(weights_init)  # apply函数会递归地搜索网络内的所有module
 lossFunc = nn.CrossEntropyLoss().cuda()
 optimizer = tc.optim.Adam(cnn.parameters(), lr=LearningRate)
 
-
 for epoch in range(EPOCH):
     with ut.Timing("epoch: %d" % epoch) as t:
         for step, (train_x, train_y) in enumerate(train_loader):
@@ -201,6 +184,5 @@ for epoch in range(EPOCH):
                 pre_y = tc.max(test_out, 1)[1].data.squeeze()
                 accuracy = sum(pre_y == test_y) / len(test_y)
                 s = "epoch: %d   step: %d   accuracy: %.3f\n" % (epoch, step, accuracy)
-                with ut.Log('./log.txt',s) as t:
-                    pass
-                print(s)
+                with ut.Log('./log.txt', s) as t:
+                    print(s)
